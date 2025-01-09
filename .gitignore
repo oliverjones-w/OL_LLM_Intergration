@@ -1,0 +1,9 @@
+# Exclude virtual environment and Python cache files
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.env
+*.DS_Store
