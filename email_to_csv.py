@@ -2,6 +2,10 @@ import os
 import csv
 from datetime import datetime
 import win32com.client
+from dotenv import load_dotenv
+from langchain_openai.llms import OpenAI
+import openai
+
 
 def update_emails_to_csv(account_name, subfolder_name, csv_path):
     """
@@ -78,19 +82,25 @@ def update_emails_to_csv(account_name, subfolder_name, csv_path):
         print(f"An error occurred: {e}")
 
 
-from dotenv import load_dotenv
-from langchain_openai.llms import OpenAI
-# Initialize the OpenAI client
-client = OpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
 
-if not client.api_key:
+# Load environment variables from .env file
+load_dotenv()
+
+my_api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = my_api_key
+
+if not my_api_key:
     raise ValueError("OPENAI_API_KEY environment variable is not set.")
 else:
     print(f"API Key is set")
 
+
+# Initialize the OpenAI client
+client = OpenAI(api_key=my_api_key)
+
 # Function to interact with OpenAI API and print raw response
 def categorize_data(unstructured_text):
-    response = client.chat.completions.create(
+    response = openai.Completion.create(
         model="gpt-3.5-turbo",
         messages=[
             {
