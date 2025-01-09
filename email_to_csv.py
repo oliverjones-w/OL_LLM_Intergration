@@ -100,7 +100,7 @@ client = OpenAI(api_key=my_api_key)
 
 # Function to interact with OpenAI API and print raw response
 def categorize_data(unstructured_text):
-    response = openai.Completion.create(
+    response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -114,8 +114,8 @@ def categorize_data(unstructured_text):
     print(response.model_dump_json(indent=2))
     
     # Extract the message content
-    # extracted_text = response.choices[0].message.content.strip()
-    # return extracted_text
+    extracted_text = response.choices[0].message.content.strip()
+    return extracted_text
 
 
 
