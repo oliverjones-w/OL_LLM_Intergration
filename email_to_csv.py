@@ -138,6 +138,7 @@ def categorize_data(unstructured_text, subfolder_name):
     extracted_text = response.choices[0].message.content.strip()
     return extracted_text
 
+
 # Configuration
 account_name = "intern2@baystreetadvisorsllc.com"  # Replace with your account name
 csv_path = r"C:\Users\briel\Downloads\baystreet\folder\contacts.csv"
