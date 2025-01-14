@@ -5,7 +5,7 @@ import win32com.client
 from dotenv import load_dotenv
 from langchain_openai.llms import OpenAI
 import openai
-
+import pandas as pd
 
 def update_emails_to_csv(account_name, subfolder_name, csv_path):
     """
@@ -72,8 +72,20 @@ def update_emails_to_csv(account_name, subfolder_name, csv_path):
 
                     # Write email data to the CSV
                     csv_writer.writerow([email_id, sent_time, subject, sender, body])
-                    extracted_text = categorize_data(body)
-                    export_to_csv(extracted_text, parsed_table_csv)
+                    extracted_text = categorize_data(body, subfolder_name)
+                    print(extracted_text)
+                    # Parse the string into a dictionary
+                    extracted_text_dict = {}
+                    for line in extracted_text.strip().split('\n'):
+                        if ':' in line:  # Ensure the line has a key-value structure
+                            key, value = line.split(':', 1)
+                            extracted_text_dict[key.strip()] = value.strip()
+                    # Convert the dictionary to a DataFrame
+                    extracted_text_df = pd.DataFrame([extracted_text_dict])
+                    
+                    # extracted_text_df = pd.DataFrame(extracted_text)
+                    print(extracted_text_df)
+                    # export_to_csv(extracted_text, parsed_table_csv)
                 except Exception as email_error:
                     print(f"Error processing email: {email_error}")
 
@@ -99,79 +111,40 @@ else:
 # Initialize the OpenAI client
 client = OpenAI(api_key=my_api_key)
 
-# Function to interact with OpenAI API and print raw response
-def categorize_data(unstructured_text):
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "user",
-                "content": f"Extract the following information from the text and assign to these categories: Name, Title, Investment Strategy, Financial Products, Firm, Region, Location: \"{unstructured_text}\"",
-            }
-        ]
+# Function to interact with OpenAI API
+def categorize_data(unstructured_text, subfolder_name):
+    if subfolder_name == "HFReturns": # edit according to exact folder name
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Extract the following information from the text and assign to these categories: Fund Name, Date, Monthly Return, YTD, Annualized Return, Strategy: \"{unstructured_text}\"", # edit columns according to preference
+                }
+            ]
+        )
+    elif subfolder_name == "People Moves": # edit according to exact folder name
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Extract the following information from the text and assign to these categories: Name, Function, Current Firm, Current Title, Date Joined, Current Location, Former Firm, Former Title, Date Left, Former Location, Note: \"{unstructured_text}\"",
+                }
+            ]
     )
-    # Print the raw response (remove "#" to print raw response)
-    # print("Raw response from API:")
-    # print(response.model_dump_json(indent=2))
-    
+
     # Extract the message content
     extracted_text = response.choices[0].message.content.strip()
     return extracted_text
 
-
-def export_to_csv(content, output_csv_path):
-    # Parse the content into a dictionary
-    data = {}
-    for line in content.strip().split('\n'):
-        if ':' in line:  # Ensure the line has a key-value structure
-            key, value = line.split(':', 1)
-            data[key.strip()] = value.strip()
-
-    # Extract headers and row data from the parsed content
-    new_headers = list(data.keys())
-    new_row = [data.get(header, "") for header in new_headers]
-
-    # Check if the file exists and read its current content
-    file_exists = os.path.isfile(output_csv_path)
-    existing_headers = []
-    existing_rows = []
-
-    if file_exists and os.path.getsize(output_csv_path) > 0:
-        with open(output_csv_path, mode='r', encoding='utf-8') as csv_file:
-            csv_reader = csv.reader(csv_file)
-            existing_headers = next(csv_reader)  # First row is the headers
-            existing_rows = list(csv_reader)     # Remaining rows
-
-    # Merge existing headers with new headers (to include any new columns)
-    merged_headers = list(dict.fromkeys(existing_headers + new_headers))  # Maintain order and avoid duplicates
-
-    # Prepare the row to match the merged headers
-    merged_row = [data.get(header, "") if header in data else "" for header in merged_headers]
-
-    # Write the updated headers and rows back to the file
-    with open(output_csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
-        csv_writer = csv.writer(csv_file)
-
-        # Write merged headers
-        csv_writer.writerow(merged_headers)
-
-        # Write existing rows, updated to match the new headers
-        for row in existing_rows:
-            updated_row = row + [""] * (len(merged_headers) - len(row))  # Add blanks for new columns
-            csv_writer.writerow(updated_row)
-
-        # Append the new row
-        csv_writer.writerow(merged_row)
-
-    print(f"Content successfully added to {output_csv_path}")
-
-
 # Configuration
 account_name = "intern2@baystreetadvisorsllc.com"  # Replace with your account name
-subfolder_name = "Test"                     # Replace with your subfolder name
 csv_path = r"C:\Users\briel\Downloads\baystreet\folder\contacts.csv"
-
 parsed_table_csv = r"C:\Users\briel\Downloads\baystreet\folder\parsed_table.csv"
 
 # Fetch emails and update CSV
+subfolder_name = "People Moves" # Replace with your subfolder name
+update_emails_to_csv(account_name, subfolder_name, csv_path)
+subfolder_name = "HFReturns" # Replace with your subfolder name
 update_emails_to_csv(account_name, subfolder_name, csv_path)
