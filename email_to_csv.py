@@ -1,16 +1,44 @@
 import os
 import csv
-from datetime import datetime
 import win32com.client
 from dotenv import load_dotenv
 from langchain_openai.llms import OpenAI
 import openai
 import pandas as pd
 
+# Initialize an empty list to store the processed values
+processed_list = []
+extracted_text_dict = {}
+
+combined_pm_df = pd.DataFrame()
+combined_hf_df = pd.DataFrame()
+
+
+# Load environment variables from .env file
+load_dotenv()
+
+my_api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = my_api_key
+
+if not my_api_key:
+    raise ValueError("OPENAI_API_KEY environment variable is not set.")
+else:
+    print(f"API Key is set")
+
+# Initialize the OpenAI client
+client = OpenAI(api_key=my_api_key)
+
+
+
+
+
 def update_emails_to_csv(account_name, subfolder_name, csv_path):
     """
     Automate the retrieval of emails from Outlook, saving them to a CSV for further processing.
     """
+    global extracted_text_dict
+    global combined_pm_df
+    global combined_hf_df
     try:
         # Initialize Outlook application
         outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
@@ -21,7 +49,6 @@ def update_emails_to_csv(account_name, subfolder_name, csv_path):
             if folder.Name == account_name:
                 root_folder = folder
                 break
-
 
         if root_folder is None:
             print(f"Account folder '{account_name}' not found.")
@@ -68,84 +95,79 @@ def update_emails_to_csv(account_name, subfolder_name, csv_path):
                     sent_time = email.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S")
                     subject = email.Subject or "(No Subject)"
                     sender = email.SenderName or "(No Sender)"
-                    body = email.Body.strip().replace('\n', ' ').replace('\r', '')
+                    # Process the body to keep only text before "The information contained in this email"
+                    if "The information contained in this email" in email.Body:
+                        body = email.Body.split("The information contained in this email", 1)[0].strip()
+                    else:
+                        body = email.Body.strip()
+                    # Replace newline and carriage return characters for consistency
+                    body = body.replace('\n', ' ').replace('\r', '')
 
                     # Write email data to the CSV
                     csv_writer.writerow([email_id, sent_time, subject, sender, body])
-                    extracted_text = categorize_data(body, subfolder_name)
-                    print(extracted_text)
+                    extracted_text, extracted_folder = categorize_data(body, subfolder_name)
                     # Parse the string into a dictionary
-                    extracted_text_dict = {}
                     for line in extracted_text.strip().split('\n'):
                         if ':' in line:  # Ensure the line has a key-value structure
                             key, value = line.split(':', 1)
                             extracted_text_dict[key.strip()] = value.strip()
                     # Convert the dictionary to a DataFrame
                     extracted_text_df = pd.DataFrame([extracted_text_dict])
-                    
-                    # extracted_text_df = pd.DataFrame(extracted_text)
-                    print(extracted_text_df)
-                    # export_to_csv(extracted_text, parsed_table_csv)
+                    if extracted_folder == "HFReturns":
+                        combined_hf_df = pd.concat([combined_hf_df, extracted_text_df], ignore_index=True)
+                    elif extracted_folder == "People Moves":
+                        combined_pm_df = pd.concat([combined_pm_df, extracted_text_df], ignore_index=True)                   
                 except Exception as email_error:
                     print(f"Error processing email: {email_error}")
-
-        print(f"Emails successfully updated in '{csv_path}'.")
-    
+        
     except Exception as e:
         print(f"An error occurred: {e}")
-
-
-
-# Load environment variables from .env file
-load_dotenv()
-
-my_api_key = os.getenv("OPENAI_API_KEY")
-openai.api_key = my_api_key
-
-if not my_api_key:
-    raise ValueError("OPENAI_API_KEY environment variable is not set.")
-else:
-    print(f"API Key is set")
-
-
-# Initialize the OpenAI client
-client = OpenAI(api_key=my_api_key)
 
 # Function to interact with OpenAI API
 def categorize_data(unstructured_text, subfolder_name):
     if subfolder_name == "HFReturns": # edit according to exact folder name
+        folder = "HFReturns"
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
                     "role": "user",
-                    "content": f"Extract the following information from the text and assign to these categories: Fund Name, Date, Monthly Return, YTD, Annualized Return, Strategy: \"{unstructured_text}\"", # edit columns according to preference
+                    "content": f"Extract the following information from the text and assign to these categories: "
+                    f"Fund Name, Date, Monthly Return, YTD, Annualized Return, Strategy. "
+                    f"For Monthly Return, YTD, and Annualized Return, please provide only one percantage. "
+                    f"Strategy should be one sentence maximum. "
+                    f"Please clean up the data as well so there are no stray characters and no dashes: \"{unstructured_text}\"", # edit columns according to preference
                 }
             ]
         )
     elif subfolder_name == "People Moves": # edit according to exact folder name
+        folder = "People Moves"
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
                     "role": "user",
-                    "content": f"Extract the following information from the text and assign to these categories: Name, Function, Current Firm, Current Title, Date Joined, Current Location, Former Firm, Former Title, Date Left, Former Location, Note: \"{unstructured_text}\"",
+                    "content": f"Extract the following information from the text and assign to these categories: "
+                    f"Name, Function, Current Firm, Current Title, Date Joined, Current Location, Former Firm, Former Title, Date Left, Former Location, Notes. "
+                    f"Please clean up the data as well so there are no stray characters and no dashes: \"{unstructured_text}\"", # edit columns according to preference
                 }
             ]
     )
 
     # Extract the message content
     extracted_text = response.choices[0].message.content.strip()
-    return extracted_text
-
+    return extracted_text, folder
 
 # Configuration
 account_name = "intern2@baystreetadvisorsllc.com"  # Replace with your account name
 csv_path = r"C:\Users\briel\Downloads\baystreet\folder\contacts.csv"
-parsed_table_csv = r"C:\Users\briel\Downloads\baystreet\folder\parsed_table.csv"
+parsed_hf_table_csv = r"C:\Users\briel\Downloads\baystreet\folder\parsed_hf_table.csv"
+parsed_pm_table_csv = r"C:\Users\briel\Downloads\baystreet\folder\parsed_pm_table.csv"
 
 # Fetch emails and update CSV
 subfolder_name = "People Moves" # Replace with your subfolder name
 update_emails_to_csv(account_name, subfolder_name, csv_path)
 subfolder_name = "HFReturns" # Replace with your subfolder name
 update_emails_to_csv(account_name, subfolder_name, csv_path)
+combined_hf_df.to_csv(parsed_hf_table_csv, mode='w', index=False, header=True)
+combined_pm_df.to_csv(parsed_pm_table_csv, mode='w', index=False, header=True)
